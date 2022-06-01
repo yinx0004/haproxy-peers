@@ -1,92 +1,109 @@
 # HAProxy-Peers
 
+## Current HAProxy Problem
+The current HAProxy configuration of backend servers on the main node is `*-pxc-0` and it's using `on-marked-up shutdown-backup-sessions` which means whenever HAProxy take the action of backend server failover, once the main node is recovered, it will take back the traffic, which means it will be two times of failover.
 
+Further more, the 2nd failover is when the backup server is still running, haproxy will shutdown the sessions on the backup server, this could be troublesome, there might be onging transactions which can not be immediately interrupted. In the scenario of high traffic, there's chance traffic will be on backup and main node at the same time.
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
+For example
 ```
-cd existing_repo
-git remote add origin https://git.insea.io/cloud/sql/haproxy-peers.git
-git branch -M main
-git push -uf origin main
+backend galera-nodes
+  mode tcp
+  option srvtcpka
+  balance roundrobin
+  option external-check
+  external-check command /usr/local/bin/check_pxc.sh
+  server test-pxc-db-pxc-0 test-pxc-db-pxc-0.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 on-marked-up shutdown-backup-sessions
+  server test-pxc-db-pxc-2 test-pxc-db-pxc-2.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup
+  server test-pxc-db-pxc-1 test-pxc-db-pxc-1.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup
 ```
 
-## Integrate with your tools
+## Improvement on the HAProxy Configuration
+The main idea is let HAProxy stick on the new backend server once failover.
 
-- [ ] [Set up project integrations](https://git.insea.io/cloud/sql/haproxy-peers/-/settings/integrations)
+We can abandon `on-marked-up shutdown-backup-sessions`, use `on-marked-down shutdown-sessions` only on all backend servers, this allow HAproxy to close all existing connections to a backend when it goes down. Normally HAProxy allows existing connections to finish.
 
-## Collaborate with your team
+For example
+```
+backend galera-nodes
+  mode tcp
+  option srvtcpka
+  balance roundrobin
+  option external-check
+  external-check command /usr/local/bin/check_pxc.sh
+  server test-pxc-db-pxc-0 test-pxc-db-pxc-0.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 on-marked-down shutdown-sessions
+  server test-pxc-db-pxc-2 test-pxc-db-pxc-2.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup on-marked-down shutdown-sessions
+  server test-pxc-db-pxc-1 test-pxc-db-pxc-1.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup on-marked-down shutdown-sessions
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+**This require we make sure the active backend are the same among all HAProxy, because if one of HAProxy restarted, the active backend will always be the main node pxc-0, it might be different with other HAProxy if failover already happened earlier on.**
 
-## Test and Deploy
+## Introducion of HAProxy Peers
 
-Use the built-in continuous integration in GitLab.
+### Peers
+The peers section enables
+1. Local peer will persist stick table data after a haproxy soft restart(eg: reload).
+2. The replication of stick table data between two or more HAProxy instances.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### Stick Tables
+Stick tables are storage spaces that run in memory inside the HAProxy process. They store data about traffic as it passes through. We can use it to persist a client to a particular server.
 
-***
+**Peers and stick tables can help us make sure all HAProxy always have the same active backend server**
 
-# Editing this README
+For example
+```
+peers mypeers
+  peer test-pxc-db-haproxy-0 test-pxc-db-haproxy-0.test-pxc-db-haproxy.pxc.svc.cluster.local:10000
+  peer test-pxc-db-haproxy-1 test-pxc-db-haproxy-1.test-pxc-db-haproxy.pxc.svc.cluster.local:10000
+  peer test-pxc-db-haproxy-2 test-pxc-db-haproxy-2.test-pxc-db-haproxy.pxc.svc.cluster.local:10000
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+backend galera-nodes
+  mode tcp
+  option srvtcpka
+  balance roundrobin
+  stick-table type integer size 1 peers mypeers # new added
+  stick on int(1)  # new added
+  option external-check
+  external-check command /usr/local/bin/check_pxc.sh
+  server test-pxc-db-pxc-0 test-pxc-db-pxc-0.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 on-marked-down shutdown-sessions
+  server test-pxc-db-pxc-2 test-pxc-db-pxc-2.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup on-marked-down shutdown-sessions
+  server test-pxc-db-pxc-1 test-pxc-db-pxc-1.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 backup on-marked-down shutdown-sessions
+```
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Important notes
+**We should alway keep the local peer in the HAProxy configuration file, or the local stick table record will be lost**
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### Build Image
+```
+docker build -t myhaproxy:1.10.0 .
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+or just pull the image from sealcloud CIR
+```
+docker pull yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.0
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Create HAProxy ENV Secret
+This to store the number of haproxy instances
+```
+kubectl create -f haproxy-env-secret.yaml -n cloudsql
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### Create PXC cluster
+```
+helm install test-pxc-db percona/pxc-db -f values.yaml -n cloudsql
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Verify the sticky-table
+```
+kubectl exec -it test-pxc-db-haproxy-0 -c haproxy -- bash
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+bash-4.4$ echo "show table galera-nodes" |socat stdio /etc/haproxy/pxc/haproxy.sock
+# table: galera-nodes, type: integer, size:1, used:1
+0x557cdf0d40b0: key=1 use=0 exp=0 server_id=1 server_name=test-pxc-db-pxc-0
+```
 
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Notice
+The peers with sticky table still can not solve the prolem of high traffic scenario, there's still chances traffic will be on both backup and main node at the same time if haproxy restarted accidently, even the sticky table replication from peers only take a fraction of a second, there's still a very short period of time the sticky table is not synced.
