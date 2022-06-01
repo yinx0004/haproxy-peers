@@ -3,7 +3,7 @@
 ## Current HAProxy Problem
 The current HAProxy configuration of backend servers on the main node is `*-pxc-0` and it's using `on-marked-up shutdown-backup-sessions` which means whenever HAProxy take the action of backend server failover, once the main node is recovered, it will take back the traffic, which means it will be two times of failover.
 
-Further more, the 2nd failover is when the backup server is still running, haproxy will shutdown the sessions on the backup server, this could be troublesome, there might be onging transactions which can not be immediately interrupted.
+Further more, the 2nd failover is when the backup server is still running, haproxy will shutdown the sessions on the backup server, this could be troublesome, there might be onging transactions which can not be immediately interrupted. In the scenario of high traffic, there's chance traffic will be on backup and main node at the same time.
 
 For example
 ```
@@ -104,3 +104,6 @@ bash-4.4$ echo "show table galera-nodes" |socat stdio /etc/haproxy/pxc/haproxy.s
 # table: galera-nodes, type: integer, size:1, used:1
 0x557cdf0d40b0: key=1 use=0 exp=0 server_id=1 server_name=test-pxc-db-pxc-0
 ```
+
+## Notice
+The peers with sticky table still can not solve the prolem of high traffic scenario, there's still chances traffic will be on both backup and main node at the same time if haproxy restarted accidently, even the sticky table replication from peers only take a fraction of a second, there's still a very short period of time the sticky table is not synced.
