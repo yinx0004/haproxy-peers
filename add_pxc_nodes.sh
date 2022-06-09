@@ -5,19 +5,19 @@ set -o xtrace
 
 function main() {
     echo "Running $0"
-   
+
     ## added for haproxy peer ##
 
     LOCK_FILE="/etc/haproxy/pxc/haproxy.lock"
     trap "ls $LOCK_FILE |xargs rm" EXIT
-    
+
     while [ -e $LOCK_FILE ]
     do
         echo "haproxy config file is locked! slepp 1..."
         sleep 1
     done
     touch $LOCK_FILE
-    
+
     HAPROXY_NUM=${HAPROXY_NUM:-3}
     TIMEOUT=${LIVENESS_CHECK_TIMEOUT:-10}
     PEER_CONF="/etc/haproxy/pxc/haproxy.cfg"
@@ -114,8 +114,8 @@ cat <<-EOF >> "$path_to_haproxy_cfg/haproxy.cfg"
       mode tcp
       option srvtcpka
       balance roundrobin
-      stick-table type integer size 1 peers mypeers
-      stick on int(1)
+      stick-table type string len 40 size 20000 peers mypeers
+      stick on fe_name
       option external-check
       external-check command /usr/local/bin/check_pxc.sh
 EOF
@@ -128,8 +128,8 @@ cat <<-EOF >> "$path_to_haproxy_cfg/haproxy.cfg"
       mode tcp
       option srvtcpka
       balance roundrobin
-      stick-table type integer size 1 peers mypeers
-      stick on int(1)
+      stick-table type string len 40 size 20000 peers mypeers
+      stick on fe_name
       option external-check
       external-check command /usr/local/bin/check_pxc.sh
 EOF
@@ -151,8 +151,8 @@ cat <<-EOF >> "$path_to_haproxy_cfg/haproxy.cfg"
       mode tcp
       option srvtcpka
       balance roundrobin
-      stick-table type integer size 1 peers mypeers
-      stick on int(1)
+      stick-table type string len 40 size 20000 peers mypeers
+      stick on fe_name
       option external-check
       external-check command /usr/local/bin/check_pxc.sh
 EOF
