@@ -61,8 +61,8 @@ backend galera-nodes
   mode tcp
   option srvtcpka
   balance roundrobin
-  stick-table type integer size 1 peers mypeers # new added
-  stick on int(1)  # new added
+  stick-table type string len 40 size 20000 peers mypeers # new added
+  stick fe_name                                           # new added
   option external-check
   external-check command /usr/local/bin/check_pxc.sh
   server test-pxc-db-pxc-0 test-pxc-db-pxc-0.test-pxc-db-pxc.pxc.svc.cluster.local:3306  check inter 10000 rise 1 fall 2 weight 1 on-marked-down shutdown-sessions
@@ -82,7 +82,7 @@ docker build -t myhaproxy:1.10.0 .
 
 or just pull the image from sealcloud CIR
 ```
-docker pull yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.0
+docker pull yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.1
 ```
 
 ### Create HAProxy ENV Secret
@@ -102,8 +102,12 @@ kubectl exec -it test-pxc-db-haproxy-0 -c haproxy -- bash
 
 bash-4.4$ echo "show table galera-nodes" |socat stdio /etc/haproxy/pxc/haproxy.sock
 # table: galera-nodes, type: integer, size:1, used:1
-0x557cdf0d40b0: key=1 use=0 exp=0 server_id=1 server_name=test-pxc-db-pxc-0
+0x557cdf0d40b0: key=galera-in use=0 exp=0 server_id=1 server_name=test-pxc-db-pxc-0
 ```
+> `galera-in` is the frontend name
 
 ## Notice
-The peers with sticky table still can not solve the prolem of high traffic scenario, there's still chances traffic will be on both backup and main node at the same time if haproxy restarted accidently, even the sticky table replication from peers only take a fraction of a second, there's still a very short period of time the sticky table is not synced.
+Only when all haproxy goes down, the stick table will be reset, pxc-0 will be the active node
+
+## Crash test
+Randomly kill pxc pod(s) and/or haproxy pod(s), verify the stick table entry of all haproxy, and verify the connections only goes to one pxc
