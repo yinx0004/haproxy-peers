@@ -178,7 +178,7 @@ haproxy:
   enabled: true 
   size: 3
   #image: "percona/percona-xtradb-cluster-operator:1.10.0-haproxy"
-  image: "yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.0"
+  image: "yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.1"
   replicasServiceEnabled: false 
   imagePullPolicy: IfNotPresent 
   imagePullSecrets: []
@@ -256,7 +256,7 @@ haproxy:
       # memory: 1G
       # cpu: 600m
   sidecars: 
-    - image: "yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.0" 
+    - image: "yinx-test-1.instance.cir.sg-sin.sealcloud.com/pxc/myhaproxy:1.10.1" 
       name: haproxy-monit
       command: ["/bin/sh"]
       args: ["/usr/bin/update_haproxy_peers.sh"]
