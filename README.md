@@ -77,7 +77,7 @@ backend galera-nodes
 
 ### Build Image
 ```
-docker build -t myhaproxy:1.10.0 .
+docker build -t myhaproxy:1.10.1 .
 ```
 
 or just pull the image from sealcloud CIR
